@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     global server_streams, context_managers
     
     # Startup
-    config_file = r"G:\Projects\mcp-via-litellm\server_config.json"
+    config_file = r"server_config.json"
     try:
         with open(config_file, 'r') as f:
             servers = list(json.load(f)['mcpServers'].keys())
