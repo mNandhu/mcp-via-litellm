@@ -1,6 +1,7 @@
 import os
 import json
-import anyio
+import asyncio
+import contextlib
 from typing import List, Optional
 from mcpcli.config import load_config
 from mcpcli.transport.stdio.stdio_client import stdio_client
@@ -16,6 +17,7 @@ ANSI_BLUE = "\033[94m"
 ANSI_CYAN = "\033[96m"
 ANSI_RESET = "\033[0m"
 ANSI_BOLD = "\033[1m"
+
 
 async def initialize_servers(config_path: str, server_names: List[str]) -> tuple:
     """Initialize connections to all servers and return the stream pairs."""
@@ -40,8 +42,8 @@ async def initialize_servers(config_path: str, server_names: List[str]) -> tuple
 async def close_servers(context_managers: List):
     """Properly close all server connections."""
     for cm in context_managers:
-        with anyio.move_on_after(1):  # wait up to 1 second
-            await cm.__aexit__(None, None, None)
+            with asyncio.move_on_after(1):  # wait up to 1 second
+                await cm.__aexit__()
 
 
 async def process_conversation(
@@ -79,8 +81,8 @@ async def chat_completion(
 ) -> List[dict]:
     """Handle a chat completion request with the given messages."""
     try:
-        provider = provider or os.getenv("LLM_PROVIDER", "openai/gpt-3.5-turbo")
-        model = model or os.getenv("LLM_MODEL", "gpt-3.5-turbo")
+        provider = provider or os.getenv("LLM_PROVIDER", "groq/llama-3.1-8b-instant")
+        model = model or os.getenv("LLM_MODEL", provider.split("/")[-1])
 
         # Fetch and prepare tools
         tools = []
@@ -115,38 +117,65 @@ async def main():
     with open(config_file, 'r') as f:
         servers = list(json.load(f)['mcpServers'].keys())
 
-    server_streams, context_managers = await initialize_servers(config_file, servers)
-
+    server_streams = []
+    context_managers = []
     try:
-        user_message = input(f"{ANSI_YELLOW}Enter your message (or 'exit' to quit): {ANSI_RESET}")
+        # Initialize servers
+        server_streams, context_managers = await initialize_servers(config_file, servers)
 
-        messages = [{"role": "user", "content": user_message}]
+        # Initial message
+        user_message = input(f"{ANSI_YELLOW}Enter your message: {ANSI_RESET}")
+        if user_message.lower() == 'exit':
+            # Okay, nothing works ... let's try the old way
+            print('Forcing my way out!')
+            raise KeyboardInterrupt
+
+        # Start chat with system prompt
         chat_history = await chat_completion(
             server_streams,
-            messages=messages,
+            messages=[{"role": "user", "content": user_message}],
             add_system_prompt=True
-            # Prefer to handle system prompts outside, but it depends on the internal var - tools
         )
         if chat_history:
             print(f'{ANSI_BLUE}AI: {chat_history[-1]["content"]}{ANSI_RESET}')
 
+        # Continue chat
         while True:
             user_message = input(f"{ANSI_YELLOW}Enter your message (or 'exit' to quit): {ANSI_RESET}")
             if user_message.lower() == 'exit':
+                print(f"{ANSI_GREEN}Chat session ended.{ANSI_RESET}")
                 break
             elif user_message.lower() == 'history':
                 print(f"{ANSI_CYAN}{chat_history}{ANSI_RESET}")
                 continue
-            chat_history = await chat_completion(
-                server_streams,
-                messages=chat_history.append({"role": "user", "content": user_message}),
-            )
+
+            # Properly update chat history
             if chat_history:
-                print(f'{ANSI_BLUE}AI: {chat_history[-1]["content"]}{ANSI_RESET}')
+                chat_history.append({"role": "user", "content": user_message})
+                chat_history = await chat_completion(
+                    server_streams,
+                    messages=chat_history,
+                )
+                if chat_history:
+                    print(f'{ANSI_BLUE}AI: {chat_history[-1]["content"]}{ANSI_RESET}')
+        print('While loop exited')
 
     finally:
-        await close_servers(context_managers)
+        # await stack.aclose()
+        # await stack.__aexit__(None, None, None)
+        # await stack.push(None)
+        # stack.pop_all()
+        # Okay, nothing works ... let's try the old way
+        # await close_servers(context_managers)
+        # print('Forcing my way out!')
+        # raise KeyboardInterrupt
+        # return
+        pass
 
 
 if __name__ == "__main__":
-    anyio.run(main)
+    try:
+        asyncio.run(main())
+        print("Program Closed Successfully")
+    except KeyboardInterrupt:
+        print(f"\n{ANSI_RED}Chat session terminated.{ANSI_RESET}")
