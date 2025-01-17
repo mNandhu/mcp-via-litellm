@@ -6,10 +6,16 @@ from mcpcli.config import load_config
 from mcpcli.transport.stdio.stdio_client import stdio_client
 from mcpcli.messages.send_initialize_message import send_initialize
 from mcpcli.llm_client import LLMClient
-from mcpcli.system_prompt_generator import SystemPromptGenerator
 from mcpcli.tools_handler import convert_to_openai_tools, fetch_tools, handle_tool_call
 from mcpcli.chat_handler import generate_system_prompt
 
+ANSI_RED = "\033[91m"
+ANSI_GREEN = "\033[92m"
+ANSI_YELLOW = "\033[93m"
+ANSI_BLUE = "\033[94m"
+ANSI_CYAN = "\033[96m"
+ANSI_RESET = "\033[0m"
+ANSI_BOLD = "\033[1m"
 
 async def initialize_servers(config_path: str, server_names: List[str]) -> tuple:
     """Initialize connections to all servers and return the stream pairs."""
@@ -25,7 +31,7 @@ async def initialize_servers(config_path: str, server_names: List[str]) -> tuple
 
         init_result = await send_initialize(read_stream, write_stream)
         if not init_result:
-            print(f"Server initialization failed for {server_name}")
+            print(f"{ANSI_RED}Server initialization failed for {server_name}{ANSI_RESET}")
             return []
 
     return server_streams, context_managers
@@ -56,6 +62,7 @@ async def process_conversation(
 
         if tool_calls:
             for tool_call in tool_calls:
+                print(f"{ANSI_CYAN}Tool call: {tool_call}{ANSI_RESET}")
                 await handle_tool_call(tool_call, conversation_history, server_streams)
             continue
 
@@ -72,8 +79,8 @@ async def chat_completion(
 ) -> List[dict]:
     """Handle a chat completion request with the given messages."""
     try:
-        provider = provider or os.getenv("LLM_PROVIDER", "groq/llama-3.1-8b-instant")
-        model = model or os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
+        provider = provider or os.getenv("LLM_PROVIDER", "openai/gpt-3.5-turbo")
+        model = model or os.getenv("LLM_MODEL", "gpt-3.5-turbo")
 
         # Fetch and prepare tools
         tools = []
@@ -98,7 +105,7 @@ async def chat_completion(
         return conversation_history
 
     except Exception as e:
-        print(f"Error in chat completion: {e}")
+        print(f"{ANSI_RED}Error in chat completion: {e}{ANSI_RESET}")
         return None
 
 
@@ -111,7 +118,7 @@ async def main():
     server_streams, context_managers = await initialize_servers(config_file, servers)
 
     try:
-        user_message = input("Enter your message (or 'exit' to quit): ")
+        user_message = input(f"{ANSI_YELLOW}Enter your message (or 'exit' to quit): {ANSI_RESET}")
 
         messages = [{"role": "user", "content": user_message}]
         chat_history = await chat_completion(
@@ -120,20 +127,22 @@ async def main():
             add_system_prompt=True
             # Prefer to handle system prompts outside, but it depends on the internal var - tools
         )
-        print('AI:', chat_history[-1]["content"])
+        if chat_history:
+            print(f'{ANSI_BLUE}AI: {chat_history[-1]["content"]}{ANSI_RESET}')
+
         while True:
-            user_message = input("Enter your message (or 'exit' to quit): ")
+            user_message = input(f"{ANSI_YELLOW}Enter your message (or 'exit' to quit): {ANSI_RESET}")
             if user_message.lower() == 'exit':
                 break
             elif user_message.lower() == 'history':
-                print(chat_history)
+                print(f"{ANSI_CYAN}{chat_history}{ANSI_RESET}")
                 continue
             chat_history = await chat_completion(
                 server_streams,
                 messages=chat_history.append({"role": "user", "content": user_message}),
             )
             if chat_history:
-                print('AI:', chat_history[-1]["content"])
+                print(f'{ANSI_BLUE}AI: {chat_history[-1]["content"]}{ANSI_RESET}')
 
     finally:
         await close_servers(context_managers)
