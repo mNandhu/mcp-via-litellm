@@ -342,14 +342,14 @@ def cli_main():
 
     parser.add_argument(
         "--provider",
-        choices=["openai", "anthropic", "ollama"],
+        # choices=["openai", "anthropic", "ollama"],
         default="openai",
         help="LLM provider to use. Defaults to 'openai'.",
     )
 
     parser.add_argument(
         "--model",
-        help=("Model to use. Defaults to 'gpt-4o-mini' for openai, 'claude-3-5-haiku-latest' for anthropic and 'qwen2.5-coder' for ollama"),
+        help="Model to use. Defaults to 'gpt-4o-mini' for openai, 'claude-3-5-haiku-latest' for anthropic and 'qwen2.5-coder' for ollama",
     )
 
     args = parser.parse_args()
@@ -358,6 +358,7 @@ def cli_main():
     model = args.model or (
         "gpt-4o-mini" if args.provider == "openai"
         else "claude-3-5-haiku-latest" if args.provider == "anthropic"
+        else args.provider.split('/')[-1] if '/' in args.provider
         else "qwen2.5-coder"
     )
     os.environ["LLM_PROVIDER"] = args.provider

@@ -8,7 +8,7 @@ import ollama
 from dotenv import load_dotenv
 from openai import OpenAI
 from anthropic import Anthropic
-
+import litellm
 # Load environment variables
 load_dotenv()
 
@@ -34,6 +34,9 @@ class LLMClient:
         elif provider == "ollama" and not hasattr(ollama, "chat"):
             raise ValueError("Ollama is not properly configured in this environment.")
 
+        elif '/' in provider: # LiteLLM Format
+            self.api_key = None
+
     def create_completion(
         self, messages: List[Dict], tools: List = None
     ) -> Dict[str, Any]:
@@ -47,9 +50,41 @@ class LLMClient:
         elif self.provider == "ollama":
             # perform an ollama completion
             return self._ollama_completion(messages, tools)
+        elif '/' in self.provider:
+            return self._lite_llm_completion(messages, tools, self.provider)
         else:
             # unsupported providers
             raise ValueError(f"Unsupported provider: {self.provider}")
+
+    @staticmethod
+    def _lite_llm_completion(messages: List[Dict], tools: List, provider: str) -> Dict[str, Any]:
+        """Handle LiteLLM chat completions."""
+
+        try:
+            # make a request, passing in tools
+            response = litellm.completion(
+                model=provider,
+                messages=messages,
+                tools=tools or [],
+            )
+            # return the response
+            return {
+                "response": response.choices[0].message.content,
+                "tool_calls": getattr(response.choices[0].message, "tool_calls", []),
+            }
+
+            # Debug
+            # print(f"Got Input {json.dumps(messages)=!r}\n\n{json.dumps(tools)=!r}\n\n")
+            # with open('messages.json','w') as f:
+            #     json.dump(messages, f)
+            # with open('tools.json','w') as f:
+            #     json.dump(tools, f)
+            # return {"response": 'hey!@',"tool_calls": []}
+        except Exception as e:
+            # error
+            logging.error(f"LiteLLM API Error: {str(e)}")
+            raise ValueError(f"LiteLLM API Error: {str(e)}")
+
 
     def _openai_completion(self, messages: List[Dict], tools: List) -> Dict[str, Any]:
         """Handle OpenAI chat completions."""
